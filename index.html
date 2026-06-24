@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI識詐行動 — 高中組複審評分平台</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f1117;
+    --panel: #1a1d27;
+    --border: #2e3245;
+    --accent: #6c63ff;
+    --accent2: #00d4aa;
+    --text: #e2e8f0;
+    --muted: #8892a4;
+    --score-bg: #252840;
+    --hover: #22263a;
+    --tag: #2a2d45;
+  }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', 'PingFang TC', '微軟正黑體', sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+  /* Header */
+  header { background: var(--panel); border-bottom: 1px solid var(--border); padding: 10px 16px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+  header h1 { font-size: 1rem; font-weight: 700; color: var(--accent); flex: 1; }
+  .header-btn { background: var(--tag); border: 1px solid var(--border); color: var(--text); padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 0.82rem; transition: background .15s; white-space: nowrap; }
+  .header-btn:hover { background: var(--hover); }
+  /* Layout */
+  .layout { display: flex; flex: 1; overflow: hidden; }
+  /* Left: work list */
+  .sidebar { width: 220px; min-width: 180px; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; }
+  .sidebar-header { padding: 10px 12px; font-size: 0.78rem; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .work-list { overflow-y: auto; flex: 1; }
+  .work-item { padding: 9px 12px; cursor: pointer; border-bottom: 1px solid var(--border); transition: background .12s; }
+  .work-item:hover { background: var(--hover); }
+  .work-item.active { background: #1e2040; border-left: 3px solid var(--accent); padding-left: 9px; }
+  .work-item .num { font-size: 0.72rem; color: var(--muted); }
+  .work-item .title { font-size: 0.84rem; line-height: 1.4; margin-top: 2px; }
+  .work-item .score-badge { display: inline-block; background: var(--tag); font-size: 0.7rem; padding: 1px 6px; border-radius: 10px; margin-top: 3px; }
+  .work-item .score-badge.done { background: #1a3a2e; color: var(--accent2); }
+  /* Middle: content viewer */
+  .viewer { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #0d0f1a; }
+  .viewer-tabs { display: flex; background: var(--panel); border-bottom: 1px solid var(--border); padding: 0 12px; flex-shrink: 0; }
+  .tab-btn { padding: 9px 14px; font-size: 0.82rem; cursor: pointer; border-bottom: 2px solid transparent; color: var(--muted); background: none; border-top: none; border-left: none; border-right: none; transition: color .12s; }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .viewer-content { flex: 1; overflow: hidden; position: relative; }
+  .tab-pane { display: none; width: 100%; height: 100%; }
+  .tab-pane.active { display: flex; align-items: stretch; }
+  #pdf-pane { flex-direction: column; }
+  #pdf-container { flex: 1; overflow: auto; display: flex; flex-direction: column; align-items: center; padding: 12px; gap: 8px; }
+  #pdf-controls { background: var(--panel); border-bottom: 1px solid var(--border); padding: 7px 12px; display: flex; align-items: center; gap: 10px; font-size: 0.82rem; flex-shrink: 0; }
+  #pdf-controls button { background: var(--tag); border: 1px solid var(--border); color: var(--text); padding: 3px 10px; border-radius: 4px; cursor: pointer; }
+  #pdf-controls button:hover { background: var(--hover); }
+  #pdf-page-info { color: var(--muted); }
+  canvas { max-width: 100%; box-shadow: 0 2px 16px rgba(0,0,0,.5); border-radius: 4px; }
+  #video-pane { justify-content: center; align-items: center; }
+  #video-pane iframe { width: 100%; height: 100%; border: none; }
+  .ext-btn-wrap { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .ext-link-btn { background: var(--accent); color: #fff; text-decoration: none; padding: 11px 24px; border-radius: 8px; font-size: 0.9rem; display: inline-block; }
+  /* Right: scoring panel */
+  .scoring { width: 320px; min-width: 280px; background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; }
+  .scoring-header { padding: 10px 14px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 0.9rem; }
+  .scoring-body { flex: 1; overflow-y: auto; padding: 12px; }
+  .initial-row { background: var(--tag); border-radius: 6px; padding: 8px 10px; margin-bottom: 12px; font-size: 0.78rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .initial-row span { color: var(--text); font-weight: 600; }
+  .criterion-block { margin-bottom: 14px; }
+  .criterion-label { font-size: 0.8rem; font-weight: 600; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
+  .criterion-desc { font-size: 0.72rem; color: var(--muted); margin-bottom: 6px; line-height: 1.4; }
+  .quick-btns { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 5px; }
+  .quick-btn { background: var(--score-bg); border: 1px solid var(--border); color: var(--text); padding: 4px 10px; border-radius: 5px; cursor: pointer; font-size: 0.8rem; transition: background .1s; }
+  .quick-btn:hover { background: var(--hover); border-color: var(--accent); }
+  .quick-btn.selected { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .score-input { width: 70px; background: var(--score-bg); border: 1px solid var(--border); color: var(--text); padding: 4px 8px; border-radius: 5px; font-size: 0.9rem; text-align: center; }
+  .score-input:focus { outline: none; border-color: var(--accent); }
+  hr.divider { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+  .total-row { display: flex; justify-content: space-between; align-items: center; font-weight: 700; }
+  .total-score { font-size: 1.5rem; color: var(--accent2); }
+  .initial-total { font-size: 0.82rem; color: var(--muted); }
+  .comment-area { width: 100%; background: var(--score-bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 8px; font-size: 0.82rem; resize: vertical; min-height: 60px; font-family: inherit; }
+  .comment-area:focus { outline: none; border-color: var(--accent); }
+  .action-btns { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .action-btn { flex: 1; padding: 8px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.82rem; font-weight: 600; transition: opacity .15s; }
+  .action-btn:hover { opacity: .85; }
+  .btn-ai { background: #3b3680; color: #c4b5fd; }
+  .btn-csv { background: #1a3a2e; color: var(--accent2); }
+  .btn-save { background: var(--accent); color: #fff; }
+  /* AI panel */
+  .ai-panel { background: #14122a; border: 1px solid #3b3680; border-radius: 8px; padding: 12px; margin-top: 10px; display: none; }
+  .ai-panel.show { display: block; }
+  .ai-panel input { width: 100%; background: var(--score-bg); border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: 5px; font-size: 0.8rem; margin-bottom: 8px; }
+  .ai-panel input:focus { outline: none; border-color: var(--accent); }
+  .ai-result { font-size: 0.78rem; color: var(--muted); line-height: 1.6; white-space: pre-wrap; margin-top: 6px; max-height: 200px; overflow-y: auto; }
+  /* Toast */
+  #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #22263a; border: 1px solid var(--border); color: var(--text); padding: 10px 20px; border-radius: 8px; font-size: 0.85rem; display: none; z-index: 999; }
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  @media (max-width: 900px) {
+    .sidebar { width: 160px; min-width: 140px; }
+    .scoring { width: 270px; min-width: 240px; }
+  }
+  @media (max-width: 640px) {
+    .layout { flex-direction: column; }
+    .sidebar { width: 100%; height: 140px; min-width: unset; border-right: none; border-bottom: 1px solid var(--border); }
+    .work-list { display: flex; flex-direction: row; overflow-x: auto; overflow-y: hidden; }
+    .work-item { min-width: 120px; border-bottom: none; border-right: 1px solid var(--border); }
+    .scoring { width: 100%; min-width: unset; border-left: none; border-top: 1px solid var(--border); height: 320px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🛡 AI識詐行動 — 高中組複審評分平台</h1>
+  <button class="header-btn" onclick="setReviewerName()">👤 <span id="reviewer-display">評審姓名</span></button>
+  <button class="header-btn" onclick="exportCSV()">⬇ 輸出 CSV</button>
+  <button class="header-btn" onclick="clearAll()" style="color:#f87171">🗑 清除全部</button>
+</header>
+
+<div class="layout">
+  <!-- Left: work list -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <span>作品列表 (19件)</span>
+    </div>
+    <div class="work-list" id="work-list"></div>
+  </div>
+
+  <!-- Middle: viewer -->
+  <div class="viewer">
+    <div class="viewer-tabs">
+      <button class="tab-btn active" onclick="switchTab('pdf')">📄 作品說明書</button>
+      <button class="tab-btn" onclick="switchTab('video')">🎬 影片</button>
+    </div>
+    <div class="viewer-content">
+      <div class="tab-pane active" id="pdf-pane">
+        <div id="pdf-controls">
+          <button onclick="prevPage()">◀</button>
+          <span id="pdf-page-info">— / —</span>
+          <button onclick="nextPage()">▶</button>
+          <button onclick="zoomIn()">＋</button>
+          <button onclick="zoomOut()">－</button>
+          <span id="pdf-title" style="color:var(--muted);margin-left:8px;font-size:0.78rem;"></span>
+        </div>
+        <div id="pdf-container"><p style="color:var(--muted);margin-top:40px">請從左側選擇作品</p></div>
+      </div>
+      <div class="tab-pane" id="video-pane" style="background:#000;"></div>
+    </div>
+  </div>
+
+  <!-- Right: scoring -->
+  <div class="scoring">
+    <div class="scoring-header" id="scoring-title">請選擇作品以開始評分</div>
+    <div class="scoring-body" id="scoring-body">
+      <p style="color:var(--muted);font-size:0.82rem;line-height:1.7">從左側點選作品後，右側將顯示評分欄位。<br><br>評分資料自動儲存於瀏覽器 localStorage，完成後請輸出 CSV 備份。</p>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ── Config ──────────────────────────────────────────────────────────────────
+const PDF_BASE = 'PDF/';
+const QUICK_SCORES = [14, 16, 18, 20];
+
+const CRITERIA = [
+  { key: 'ethics',    name: 'AI 倫理與工具運用',   weight: 0.2, desc: '工具操作之合理性，是否主動避免偏見或不當內容生成。' },
+  { key: 'media',     name: '媒體素養與查證邏輯',   weight: 0.2, desc: '查證步驟之嚴謹度，以及對資訊來源判讀的精確性。' },
+  { key: 'narrative', name: '敘事創意與視覺表現',   weight: 0.2, desc: '故事情節的創新度、視覺呈現的吸引力與藝術性。' },
+  { key: 'value',     name: '宣導價值與實用性',     weight: 0.2, desc: '作品是否淺顯易懂，具備教育推廣與社會傳播之潛力。' },
+  { key: 'complete',  name: '整體完成度',           weight: 0.2, desc: '作品結構完整性與格式符合度。' },
+];
+
+const WORKS = [
+  { id:1,  title:'消息便利店',            videoUrl:'https://youtu.be/XXUG_2O6oYM',                                                                                                        docUrl:'https://drive.google.com/file/d/1jiIEBrrgQO4c8Ns3iUCtXz64oCgziVS8/view?usp=drive_link',                                                                                  pdfFile:'1-消息便利店.pdf',             initial:{ ethics:18, media:18, narrative:19, value:18, complete:18 } },
+  { id:2,  title:'別落入搶票詐騙!',       videoUrl:'https://youtu.be/7ecgJIMzdhk',                                                                                                        docUrl:'https://docs.google.com/document/d/1khfPbAubwOrL6rHIfhcmCnuhfisCxDK0/edit?usp=drive_link&ouid=111230326840711947319&rtpof=true&sd=true',                                  pdfFile:'2-別落入搶票詐騙!.pdf',        initial:{ ethics:19, media:19, narrative:19, value:18, complete:19 } },
+  { id:3,  title:'機不可識',              videoUrl:'https://youtu.be/aqIwtnhb0QM',                                                                                                        docUrl:'https://drive.google.com/file/d/14z2NrrLyXQk4BjzwCSjFlblUJ-kw31N9/view?usp=drive_link',                                                                                  pdfFile:'3-機不可識.pdf',              initial:{ ethics:18, media:18, narrative:17, value:17, complete:18 } },
+  { id:4,  title:'溫柔的陷阱',            videoUrl:'https://youtu.be/FW6VXx3pQGA',                                                                                                        docUrl:'https://drive.google.com/file/d/1uihd-FTHgyxIu0QbynvXGsU_QdFk5fLx/view?usp=sharing',                                                                                      pdfFile:'4-溫柔的陷阱.pdf',             initial:{ ethics:18, media:19, narrative:17, value:18, complete:18 } },
+  { id:5,  title:'潘朵拉的簡訊',          videoUrl:'https://youtu.be/qt1k1e0O3qk',                                                                                                        docUrl:'https://docs.google.com/document/d/1ywIRVpoutXQ0Pl7D9JuqS_EQwuafc6lT/edit?usp=drive_link&ouid=111230326840711947319&rtpof=true&sd=true',                                  pdfFile:'5-潘朵拉的簡訊.pdf',           initial:{ ethics:18, media:18, narrative:18, value:18, complete:18 } },
+  { id:6,  title:'當信任變成陷阱',        videoUrl:'https://myppt.cc/teTiY',                                                                                                              docUrl:'https://drive.google.com/file/d/1AgO6H2vm74WgaRTgai6IAKmCoWfeypn1/view?usp=drive_link',                                                                                  pdfFile:'6-當信任變成陷阱.pdf',         initial:{ ethics:18, media:18, narrative:18, value:18, complete:18 } },
+  { id:7,  title:'識詐風雲',              videoUrl:'https://youtu.be/irtcFo1oKAg',                                                                                                        docUrl:'https://drive.google.com/file/d/1eB23HWEtaaUqy23EAeexmKX9csP0kFyg/view?usp=drive_link',                                                                                  pdfFile:'7-識詐風雲.pdf',              initial:{ ethics:18, media:19, narrative:18, value:18, complete:17 } },
+  { id:8,  title:'群組裡的「分享怪獸」',  videoUrl:'https://youtu.be/KZnBPzxTkp4',                                                                                                        docUrl:'https://docs.google.com/document/d/1lbL1eN0FDwXWThhXAyv7wWK4TNuZ5U31/edit?usp=drive_link&ouid=111230326840711947319&rtpof=true&sd=true',                                  pdfFile:'8-群組裡的「分享怪獸」.pdf',  initial:{ ethics:19, media:19, narrative:18, value:18, complete:19 } },
+  { id:9,  title:'看穿 —— 小杰的防詐日記', videoUrl:'https://youtu.be/GU7XIP8dcPo',                                                                                                     docUrl:'https://drive.google.com/file/d/1o0aEpNPyyF4ze1R-RAlE3z6XL4Mjwew7/view?usp=drive_link',                                                                                  pdfFile:'9-看穿 —— 小杰的防詐日記.pdf', initial:{ ethics:19, media:19, narrative:19, value:18, complete:19 } },
+  { id:10, title:'綠面神探：看穿AI變臉詐騙', videoUrl:'https://youtube.com/shorts/kAlxSPkHpK0',                                                                                          docUrl:'https://docs.google.com/document/d/1unSVAypvTrH3oz_0z1zTTClsunfO6hq0/edit?usp=drive_link&ouid=111230326840711947319&rtpof=true&sd=true',                                  pdfFile:'10-綠面神探：看穿AI變臉詐騙.pdf', initial:{ ethics:18, media:18, narrative:17, value:17, complete:18 } },
+  { id:11, title:'假賣場，真騙局',         videoUrl:'https://drive.google.com/file/d/13NmwkmUeKjt86aXuGgOzLhQrGhfwm0BD/view?usp=drive_link',                                            docUrl:'https://drive.google.com/file/d/1EBFVu3KatKy0cZXOlKrxfBYiOhsyCWVg/view?usp=drive_link',                                                                                  pdfFile:'11-假賣場，真騙局.pdf',        initial:{ ethics:18, media:18, narrative:18, value:18, complete:18 } },
+  { id:12, title:'偷走你的「薪」',         videoUrl:'https://youtu.be/1KiPL_QfXp0',                                                                                                      docUrl:'https://drive.google.com/file/d/1w6G8bxZWIThAfp7Z34KF7FIXkevst2go/view?usp=drive_link',                                                                                  pdfFile:'12-偷走你的「薪」.pdf',        initial:{ ethics:19, media:18, narrative:19, value:19, complete:19 } },
+  { id:13, title:'聽說AI會查證',           videoUrl:'https://canva.link/por9l0zh1h21ik0',                                                                                                 docUrl:'https://docs.google.com/document/d/13IAvOEnguNNs1ctjf8xv0T4_KD41yWM-/edit?usp=drive_link&ouid=111230326840711947319&rtpof=true&sd=true',                                  pdfFile:'13-聽說AI會查證.pdf',          initial:{ ethics:19, media:19, narrative:18, value:18, complete:18 } },
+  { id:14, title:'曉瑚的深偽危機',         videoUrl:'https://youtu.be/WHy4MnV5txE',                                                                                                      docUrl:'https://drive.google.com/file/d/1BXB2gMKONYvrSAkidb6EWjHWKXALBjWp/view?usp=drive_link',                                                                                  pdfFile:'14-曉瑚的深偽危機.pdf',        initial:{ ethics:18, media:18, narrative:18, value:18, complete:18 } },
+  { id:15, title:'AI(愛)護全民',           videoUrl:'https://www.youtube.com/watch?v=u3zsL43_scQ',                                                                                       docUrl:'https://drive.google.com/file/d/1PfXd1XkKgDyqWyfyNrLycOpXFGoYpYyj/view?usp=drive_link',                                                                                  pdfFile:'15-AI(愛)護全民.pdf',          initial:{ ethics:18, media:18, narrative:18, value:18, complete:18 } },
+  { id:16, title:'五分鐘的陷阱：消失的VIP門票', videoUrl:'https://youtu.be/RvboM6e0I_w',                                                                                                docUrl:'https://drive.google.com/file/d/1_13UBfGY-iAC4SIm7n97c0rBESQTBAQQ/view?usp=drive_link',                                                                                  pdfFile:'16-五分鐘的陷阱：消失的VIP門票.pdf', initial:{ ethics:19, media:18, narrative:18, value:18, complete:19 } },
+  { id:17, title:'真相圖書館',             videoUrl:'https://drive.google.com/file/d/10-BrBFXixVEJ7BIUwlUCg04ImEFWmMd7/view?usp=sharing',                                              docUrl:'https://drive.google.com/file/d/1Rmq0kE6c-NqVIlPFvskVnrXQTcDoq9LV/view?usp=drive_link',                                                                                  pdfFile:'17-真相圖書館.pdf',            initial:{ ethics:18, media:18, narrative:18, value:18, complete:18 } },
+  { id:18, title:'就AI反詐騙',             videoUrl:'https://gemini.google.com/share/d/1_OECpJ1nzja3rgcVLfLTYV9_e7LsASSb?usp=sharing',                                                  docUrl:'https://docs.google.com/document/d/1gnDOU5dihFMYW57kKk-GBVpDcfVGD6ah/edit?usp=drive_link&ouid=111230326840711947319&rtpof=true&sd=true',                                  pdfFile:'18-就AI反詐騙.pdf',            initial:{ ethics:17, media:18, narrative:17, value:15, complete:10 } },
+  { id:19, title:'斬草除根',               videoUrl:'https://youtu.be/NnmA3eq5iHI',                                                                                                      docUrl:'https://docs.google.com/document/d/1XSSpsC8mPT3eMwY1OBkZf67n2ilkbJhX/edit?usp=drive_link&ouid=111230326840711947319&rtpof=true&sd=true',                                  pdfFile:'19-斬草除根.pdf',              initial:{ ethics:18, media:18, narrative:18, value:18, complete:18 } },
+];
+
+// ── State ────────────────────────────────────────────────────────────────────
+let currentWork = null;
+let pdfDoc = null, pdfPage = 1, pdfScale = 1.5;
+let activeTab = 'pdf';
+let aiVisible = false;
+
+const STORAGE_KEY = 'aieval_hs_scores';
+
+function loadStorage() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { return {}; }
+}
+function saveStorage(data) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+function getWorkData(id) {
+  const s = loadStorage();
+  return s[id] || {};
+}
+function setWorkData(id, patch) {
+  const s = loadStorage();
+  s[id] = Object.assign(s[id] || {}, patch);
+  saveStorage(s);
+}
+
+// ── YouTube helper ────────────────────────────────────────────────────────────
+function ytVideoId(url) {
+  if (!url) return null;
+  const patterns = [
+    /youtu\.be\/([A-Za-z0-9_-]+)/,
+    /youtube\.com\/watch\?.*v=([A-Za-z0-9_-]+)/,
+    /youtube\.com\/shorts\/([A-Za-z0-9_-]+)/,
+    /youtube\.com\/embed\/([A-Za-z0-9_-]+)/,
+  ];
+  for (const p of patterns) {
+    const m = url.match(p);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+// ── Work list ─────────────────────────────────────────────────────────────────
+function renderWorkList() {
+  const s = loadStorage();
+  const el = document.getElementById('work-list');
+  el.innerHTML = WORKS.map(w => {
+    const d = s[w.id] || {};
+    const total = calcTotal(w, d);
+    const done = CRITERIA.every(c => d[c.key] != null);
+    return `<div class="work-item${currentWork && currentWork.id===w.id?' active':''}" onclick="selectWork(${w.id})">
+      <div class="num">#${w.id}</div>
+      <div class="title">${w.title}</div>
+      <div class="score-badge${done?' done':''}">複審: ${total !== null ? total : '—'} / 初審: ${calcInitial(w)}</div>
+    </div>`;
+  }).join('');
+}
+
+function calcInitial(w) {
+  return CRITERIA.reduce((s, c) => s + (w.initial[c.key] || 0), 0);
+}
+
+function calcTotal(w, data) {
+  const vals = CRITERIA.map(c => data[c.key]);
+  if (vals.some(v => v == null)) return null;
+  return vals.reduce((s, v) => s + v, 0);
+}
+
+// ── Select work ───────────────────────────────────────────────────────────────
+function selectWork(id) {
+  currentWork = WORKS.find(w => w.id === id);
+  renderWorkList();
+  renderScoring();
+  if (activeTab === 'pdf') loadPdf();
+  else renderVideo();
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.toggle('active', ['pdf','video'][i] === tab));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.getElementById(tab + '-pane').classList.add('active');
+  if (tab === 'pdf') { if (currentWork) loadPdf(); }
+  else renderVideo();
+}
+
+// ── PDF viewer ────────────────────────────────────────────────────────────────
+let pdfRenderTask = null;
+async function loadPdf() {
+  if (!currentWork) return;
+  const url = PDF_BASE + currentWork.pdfFile;
+  document.getElementById('pdf-title').textContent = currentWork.pdfFile;
+  document.getElementById('pdf-page-info').textContent = '載入中…';
+  document.getElementById('pdf-container').innerHTML = '<p style="color:var(--muted);margin-top:40px">載入 PDF 中…</p>';
+  try {
+    pdfDoc = await pdfjsLib.getDocument(url).promise;
+    pdfPage = 1;
+    document.getElementById('pdf-page-info').textContent = `1 / ${pdfDoc.numPages}`;
+    renderPdfPage();
+  } catch (e) {
+    document.getElementById('pdf-container').innerHTML = `<div style="color:#f87171;margin-top:40px;text-align:center;padding:20px">
+      PDF 載入失敗：${e.message}<br><br>
+      <a href="${currentWork.docUrl}" target="_blank" style="color:var(--accent)">開啟說明書連結</a>
+    </div>`;
+  }
+}
+
+async function renderPdfPage() {
+  if (!pdfDoc) return;
+  if (pdfRenderTask) { pdfRenderTask.cancel(); }
+  const page = await pdfDoc.getPage(pdfPage);
+  const vp = page.getViewport({ scale: pdfScale });
+  const canvas = document.createElement('canvas');
+  canvas.width = vp.width; canvas.height = vp.height;
+  const ctx = canvas.getContext('2d');
+  const container = document.getElementById('pdf-container');
+  container.innerHTML = '';
+  container.appendChild(canvas);
+  pdfRenderTask = page.render({ canvasContext: ctx, viewport: vp });
+  await pdfRenderTask.promise;
+  document.getElementById('pdf-page-info').textContent = `${pdfPage} / ${pdfDoc.numPages}`;
+}
+
+function prevPage() { if (pdfDoc && pdfPage > 1) { pdfPage--; renderPdfPage(); } }
+function nextPage() { if (pdfDoc && pdfPage < pdfDoc.numPages) { pdfPage++; renderPdfPage(); } }
+function zoomIn() { pdfScale = Math.min(pdfScale + 0.3, 4); if (pdfDoc) renderPdfPage(); }
+function zoomOut() { pdfScale = Math.max(pdfScale - 0.3, 0.5); if (pdfDoc) renderPdfPage(); }
+
+// ── Video ─────────────────────────────────────────────────────────────────────
+function renderVideo() {
+  const pane = document.getElementById('video-pane');
+  if (!currentWork) { pane.innerHTML = '<p style="color:var(--muted);margin:auto">請先選擇作品</p>'; return; }
+  const vid = ytVideoId(currentWork.videoUrl);
+  if (vid) {
+    pane.innerHTML = `<iframe src="https://www.youtube.com/embed/${vid}" allowfullscreen allow="autoplay; encrypted-media"></iframe>`;
+  } else {
+    pane.innerHTML = `<div class="ext-btn-wrap"><p style="color:var(--muted);font-size:0.85rem">此影片無法直接嵌入</p>
+      <a class="ext-link-btn" href="${currentWork.videoUrl}" target="_blank">▶ 外部開啟影片</a></div>`;
+  }
+}
+
+// ── Scoring panel ─────────────────────────────────────────────────────────────
+function renderScoring() {
+  if (!currentWork) return;
+  const w = currentWork;
+  const d = getWorkData(w.id);
+  document.getElementById('scoring-title').textContent = `#${w.id} ${w.title}`;
+
+  const initTotal = calcInitial(w);
+  const revTotal = calcTotal(w, d);
+
+  let html = `<div class="initial-row">初審分數：`;
+  CRITERIA.forEach(c => {
+    html += `<span title="${c.name}">${c.name.slice(0,2)}:${w.initial[c.key]}</span> `;
+  });
+  html += `<strong>合計 ${initTotal}</strong></div>`;
+
+  CRITERIA.forEach(c => {
+    const val = d[c.key] != null ? d[c.key] : '';
+    html += `<div class="criterion-block">
+      <div class="criterion-label">
+        <span>${c.name}</span>
+        <input type="number" min="0" max="20" class="score-input" id="inp-${c.key}" value="${val}"
+               oninput="onScoreInput('${c.key}', this.value)" placeholder="0~20">
+      </div>
+      <div class="criterion-desc">${c.desc}</div>
+      <div class="quick-btns">
+        ${QUICK_SCORES.map(s => `<button class="quick-btn${val==s?' selected':''}" onclick="quickScore('${c.key}',${s})">${s}</button>`).join('')}
+      </div>
+    </div>`;
+  });
+
+  html += `<hr class="divider">
+  <div class="total-row">
+    <span>複審總分</span>
+    <div style="text-align:right">
+      <div class="total-score" id="total-score-display">${revTotal !== null ? revTotal : '—'}</div>
+      <div class="initial-total">初審 ${initTotal} 分</div>
+    </div>
+  </div>
+  <hr class="divider">
+  <div style="font-size:0.8rem;margin-bottom:5px;color:var(--muted)">評語備注（選填）</div>
+  <textarea class="comment-area" id="comment-area" placeholder="輸入評語…" oninput="onCommentInput(this.value)">${d.comment || ''}</textarea>
+  <div class="action-btns">
+    <button class="action-btn btn-ai" onclick="toggleAI()">🤖 AI 建議</button>
+    <button class="action-btn btn-csv" onclick="exportCSV()">⬇ CSV</button>
+  </div>
+  <div class="ai-panel" id="ai-panel">
+    <div style="font-size:0.78rem;color:var(--muted);margin-bottom:6px">Claude API Key（儲存於本機）</div>
+    <input type="password" id="ai-key" placeholder="sk-ant-..." value="${localStorage.getItem('claude_api_key')||''}">
+    <button class="action-btn btn-ai" style="width:100%" onclick="runAI()">送出分析</button>
+    <div class="ai-result" id="ai-result"></div>
+  </div>`;
+
+  document.getElementById('scoring-body').innerHTML = html;
+}
+
+function onScoreInput(key, val) {
+  const n = parseInt(val);
+  if (isNaN(n) || n < 0 || n > 20) return;
+  setWorkData(currentWork.id, { [key]: n });
+  updateTotalDisplay();
+  renderWorkList();
+  highlightQuick(key, n);
+}
+
+function quickScore(key, val) {
+  setWorkData(currentWork.id, { [key]: val });
+  const inp = document.getElementById('inp-' + key);
+  if (inp) inp.value = val;
+  updateTotalDisplay();
+  renderWorkList();
+  highlightQuick(key, val);
+}
+
+function highlightQuick(key, val) {
+  document.querySelectorAll(`.criterion-block`).forEach(block => {
+    const inp = block.querySelector(`#inp-${key}`);
+    if (!inp) return;
+    block.querySelectorAll('.quick-btn').forEach(btn => {
+      btn.classList.toggle('selected', parseInt(btn.textContent) === val);
+    });
+  });
+}
+
+function updateTotalDisplay() {
+  const d = getWorkData(currentWork.id);
+  const t = calcTotal(currentWork, d);
+  const el = document.getElementById('total-score-display');
+  if (el) el.textContent = t !== null ? t : '—';
+}
+
+function onCommentInput(val) {
+  setWorkData(currentWork.id, { comment: val });
+}
+
+// ── AI ────────────────────────────────────────────────────────────────────────
+function toggleAI() {
+  const panel = document.getElementById('ai-panel');
+  if (!panel) return;
+  aiVisible = !aiVisible;
+  panel.classList.toggle('show', aiVisible);
+}
+
+async function runAI() {
+  const key = document.getElementById('ai-key').value.trim();
+  if (!key) { showToast('請輸入 Claude API Key'); return; }
+  localStorage.setItem('claude_api_key', key);
+  const result = document.getElementById('ai-result');
+  result.textContent = '分析中…';
+
+  const w = currentWork;
+  const d = getWorkData(w.id);
+  const criteriaDesc = CRITERIA.map(c => `${c.name}（初審${w.initial[c.key]}分）：${c.desc}`).join('\n');
+
+  const prompt = `你是一位評審委員助手，正在審查「AI識詐行動：有聲繪本創作競賽」高中組作品。
+
+作品名稱：${w.title}
+
+評分標準（各項滿分20分）：
+${criteriaDesc}
+
+請根據以上資訊，對每項給出0~20分的建議分數，並說明理由（簡短即可）。格式：
+AI倫理與工具運用：X分 — 理由
+媒體素養與查證邏輯：X分 — 理由
+敘事創意與視覺表現：X分 — 理由
+宣導價值與實用性：X分 — 理由
+整體完成度：X分 — 理由
+建議總分：X分`;
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 600,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await resp.json();
+    if (data.error) { result.textContent = '錯誤：' + data.error.message; return; }
+    result.textContent = data.content[0].text;
+  } catch(e) {
+    result.textContent = '網路錯誤：' + e.message;
+  }
+}
+
+// ── CSV export ────────────────────────────────────────────────────────────────
+function exportCSV() {
+  const reviewer = localStorage.getItem('reviewer_name') || '未設定';
+  const date = new Date().toISOString().slice(0,10);
+  const header = ['組別', '題目', ...CRITERIA.map(c=>c.name), '複審總分', '初審總分', '評語', '評審姓名'];
+  const rows = [header];
+  const s = loadStorage();
+  WORKS.forEach(w => {
+    const d = s[w.id] || {};
+    const scores = CRITERIA.map(c => d[c.key] != null ? d[c.key] : '');
+    const total = calcTotal(w, d);
+    rows.push([w.id, w.title, ...scores, total !== null ? total : '', calcInitial(w), d.comment || '', reviewer]);
+  });
+  const csv = '﻿' + rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `複審評分_${reviewer}_${date}.csv`;
+  a.click();
+  showToast('CSV 已下載');
+}
+
+// ── Reviewer name ─────────────────────────────────────────────────────────────
+function setReviewerName() {
+  const name = prompt('請輸入評審姓名：', localStorage.getItem('reviewer_name') || '');
+  if (name !== null) {
+    localStorage.setItem('reviewer_name', name);
+    document.getElementById('reviewer-display').textContent = name || '評審姓名';
+    showToast('姓名已儲存');
+  }
+}
+
+// ── Clear all ─────────────────────────────────────────────────────────────────
+function clearAll() {
+  if (!confirm('確定要清除所有評分資料？此操作無法復原。')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  renderWorkList();
+  if (currentWork) renderScoring();
+  showToast('已清除所有評分資料');
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg, ms = 2200) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display = 'block';
+  setTimeout(() => { t.style.display = 'none'; }, ms);
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+(function init() {
+  const name = localStorage.getItem('reviewer_name');
+  if (name) document.getElementById('reviewer-display').textContent = name;
+  renderWorkList();
+})();
+</script>
+</body>
+</html>
