@@ -82,6 +82,7 @@
   .action-btn:hover { opacity: .85; }
   .btn-ai { background: #3b3680; color: #c4b5fd; }
   .btn-csv { background: #1a3a2e; color: var(--accent2); }
+  .btn-next { background: #1e3a5f; color: #93c5fd; }
   .btn-save { background: var(--accent); color: #fff; }
   /* AI panel */
   .ai-panel { background: #14122a; border: 1px solid #3b3680; border-radius: 8px; padding: 12px; margin-top: 10px; display: none; }
@@ -248,7 +249,7 @@ function renderWorkList() {
     return `<div class="work-item${currentWork && currentWork.id===w.id?' active':''}" onclick="selectWork(${w.id})">
       <div class="num">#${w.id}</div>
       <div class="title">${w.title}</div>
-      <div class="score-badge${done?' done':''}">複審: ${total !== null ? total : '—'} / 初審: ${calcInitial(w)}</div>
+      <div class="score-badge${done?' done':''}">初審: ${calcInitial(w)} / 複審: ${total !== null ? total : '—'}</div>
     </div>`;
   }).join('');
 }
@@ -381,7 +382,7 @@ function renderScoring() {
   <textarea class="comment-area" id="comment-area" placeholder="輸入評語…" oninput="onCommentInput(this.value)">${d.comment || ''}</textarea>
   <div class="action-btns">
     <button class="action-btn btn-ai" onclick="toggleAI()">🤖 AI 建議</button>
-    <button class="action-btn btn-csv" onclick="exportCSV()">⬇ CSV</button>
+    <button class="action-btn btn-next" onclick="nextWork()">下一組 ▶</button>
   </div>
   <div class="ai-panel" id="ai-panel">
     <div style="font-size:0.78rem;color:var(--muted);margin-bottom:6px">Claude API Key（儲存於本機）</div>
@@ -486,6 +487,15 @@ AI倫理與工具運用：X分 — 理由
     result.textContent = data.content[0].text;
   } catch(e) {
     result.textContent = '網路錯誤：' + e.message;
+  }
+}
+
+function nextWork() {
+  const idx = WORKS.findIndex(w => w.id === currentWork.id);
+  if (idx < WORKS.length - 1) {
+    selectWork(WORKS[idx + 1].id);
+  } else {
+    showToast('已是最後一組作品');
   }
 }
 
