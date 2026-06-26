@@ -1,6 +1,7 @@
 # AI 競賽複審評分平台 — CLAUDE.md
 
-本文件說明如何依照此專案架構，快速複製建構另一組（如高中組）的複審評分平台。
+本文件以此 repo（高中組）為模板，說明如何快速複製建構同樣的評分平台給不同組別使用。  
+目前已完整實作「高中組」版本，本文件同時附上「國小組」的差異規格，供後續建構參考。
 
 ---
 
@@ -10,13 +11,13 @@
 **技術**：純靜態 HTML/CSS/JS 單一檔案，部署於 GitHub Pages，無需後端。  
 **核心功能**：
 - 左側作品清單（從 xlsx 抽取）
-- 中間作品展示（PDF.js 渲染說明書 + YouTube 內嵌影片）
+- 中間作品展示（PDF.js / 圖片 / Excel 試算表 / Word 報名表）
 - 右側評分工作區（快速填分、逐項評分、AI 評分、CSV 輸出）
 - localStorage 自動暫存，平板/手機優先設計
 
 ---
 
-## 目錄結構
+## 目錄結構（高中組 ← 此 repo）
 
 ```
 repo-root/
@@ -25,203 +26,604 @@ repo-root/
 ├── .github/
 │   └── workflows/
 │       └── pages.yml           # GitHub Pages 自動部署
-├── [組別名稱]/
-│   └── PDF/                    # 作品說明書 PDF 檔案夾
-│       ├── 1-作品題目.pdf
-│       ├── 2-作品題目.pdf
-│       └── ...
-└── [評分表單].xlsx              # 初審評分資料來源（參考用）
+├── PDF/                        # 作品說明書 PDF（高中組直接放根目錄下）
+│   ├── 1-消息便利店.pdf
+│   ├── 2-別落入搶票詐騙!.pdf
+│   └── ...
+└── 【...】高中組評分表單.xlsx   # 初審評分資料來源
 ```
 
 ---
 
-## 複製新組別的步驟
+## 高中組 `index.html` 核心架構說明
+
+### Config 區塊（JS 最上方）
+
+```javascript
+const PDF_BASE = 'PDF/';          // PDF 根目錄
+const QUICK_SCORES = [14, 16, 18, 20];  // 快速填分按鈕
+
+const CRITERIA = [                // 評分項目（5項，各 weight 總和需為 1.0）
+  { key: 'ethics',    name: 'AI 倫理與工具運用',  weight: 0.2, desc: '...' },
+  { key: 'media',     name: '媒體素養與查證邏輯',  weight: 0.2, desc: '...' },
+  { key: 'narrative', name: '敘事創意與視覺表現',  weight: 0.2, desc: '...' },
+  { key: 'value',     name: '宣導價值與實用性',    weight: 0.2, desc: '...' },
+  { key: 'complete',  name: '整體完成度',          weight: 0.2, desc: '...' },
+];
+
+const WORKS = [
+  {
+    id: 1,
+    title: '消息便利店',
+    videoUrl: 'https://youtu.be/XXUG_2O6oYM',
+    docUrl: 'https://drive.google.com/...',     // 備用開啟連結
+    pdfFile: '1-消息便利店.pdf',                 // PDF 檔名（PDF_BASE 下）
+    initial: { ethics:18, media:18, narrative:19, value:18, complete:18 }
+  },
+  // ...
+];
+```
+
+### 中間 Viewer（高中組：2 個 Tab）
+
+| Tab | ID | 功能 |
+|-----|-----|------|
+| 📄 作品說明書 | `pdf-pane` | PDF.js 渲染，支援翻頁/縮放 |
+| 🎬 影片 | `video-pane` | YouTube 嵌入或外部開啟按鈕 |
+
+### 左側作品列表（高中組）
+
+每筆顯示：`#編號`、`作品題目`、`複審分數 / 初審分數`
+
+---
+
+## 複製新組別的步驟（通用）
 
 ### Step 1：建立新 GitHub Repository
 
-1. 在 GitHub 建立新 repo（例如 `AIeval-highschool`）
-2. Clone 到本機
-
-### Step 2：準備 PDF 檔案
-
-將所有作品說明書 PDF 放入對應資料夾：
-```
-高中/PDF/1-作品題目.pdf
-高中/PDF/2-作品題目.pdf
-...
+```bash
+# 建立新 repo，例如 AIeval-elementary
+git clone https://github.com/{username}/{new-repo}.git
 ```
 
-> **PDF 命名規則**：`{組別編號}-{作品題目}.pdf`  
-> 檔名需與 `index.html` 中 `pdfFile` 欄位完全一致（含全形符號）。
+### Step 2：複製核心檔案
+
+從本 repo 複製：
+- `index.html` → 作為修改起點
+- `.github/workflows/pages.yml` → 不需修改
 
 ### Step 3：從 xlsx 抽取資料
-
-用以下 Python 腳本讀取 xlsx，取得所需欄位：
 
 ```python
 import openpyxl
 
 wb = openpyxl.load_workbook('評分表單.xlsx')
-ws = wb['高中組']  # 改為對應的工作表名稱
+ws = wb['工作表名稱']  # 確認工作表名稱
 
-for row in ws.iter_rows(min_row=6, max_row=100, max_col=10, values_only=True):
+for row in ws.iter_rows(min_row=6, max_row=200, max_col=15, values_only=True):
     if not row[0]:
         break
-    print(f"id:{row[0]}, title:{row[1]}, scores:C={row[2]},D={row[3]},E={row[4]},F={row[5]},G={row[6]}, doc:{row[8]}, video:{row[9]}")
+    print(row)
 
-# 評分標準在 '評分標準' 工作表
+# 評分標準通常在另一個工作表
 ws2 = wb['評分標準']
 for row in ws2.iter_rows(min_row=1, max_row=10, max_col=3, values_only=True):
     if row[0]:
         print(f"標準: {row[0]}, 權重: {row[1]}, 說明: {row[2]}")
 ```
 
-**xlsx 欄位對照（國中組為例，高中組請確認欄位位置）**：
+### Step 4：修改 index.html（詳見各組差異說明）
 
-| 欄 | 內容 |
-|----|------|
-| A (col 0) | 組別編號 |
-| B (col 1) | 作品題目 |
-| C (col 2) | 評分項目1 初審分數 |
-| D (col 3) | 評分項目2 初審分數 |
-| E (col 4) | 評分項目3 初審分數 |
-| F (col 5) | 評分項目4 初審分數 |
-| G (col 6) | 評分項目5 初審分數 |
-| I (col 8) | 作品說明書連結（Google Doc/Drive） |
-| J (col 9) | 影片連結（YouTube 或其他） |
+### Step 5：設定 GitHub Pages
 
-### Step 4：修改 index.html
+1. Push 所有檔案到 `main` 分支
+2. GitHub repo → **Settings → Pages → Source → GitHub Actions** → 儲存
+3. 等待 CI 完成，網站上線於 `https://{username}.github.io/{repo-name}/`
 
-複製本 repo 的 `index.html`，修改以下三個區塊：
+---
 
-#### 4-1：評分標準（`CRITERIA` 陣列）
+## 國小組差異規格
 
-```javascript
-const CRITERIA = [
-  { key: 'item1', name: '評分項目名稱1', weight: 0.2, desc: '評分說明文字。' },
-  { key: 'item2', name: '評分項目名稱2', weight: 0.2, desc: '評分說明文字。' },
-  { key: 'item3', name: '評分項目名稱3', weight: 0.2, desc: '評分說明文字。' },
-  { key: 'item4', name: '評分項目名稱4', weight: 0.2, desc: '評分說明文字。' },
-  { key: 'item5', name: '評分項目名稱5', weight: 0.2, desc: '評分說明文字。' },
-];
+> 本節為建構「國小組」評分系統的完整說明，  
+> 介面、操作、評分核心與高中組相同，以下僅列出差異點。
+
+---
+
+### 差異一：目錄結構
+
+```
+repo-root/
+├── index.html
+├── CLAUDE.md
+├── .github/workflows/pages.yml
+├── 國小/
+│   ├── 1-作品題目/
+│   │   ├── 作品.pdf          ← 或 .jpg / .png（作品本體）
+│   │   ├── 報名表.pdf        ← 或 .docx（報名表單）
+│   │   ├── 對話歷程1.xlsx    ← AI 對話紀錄（必填）
+│   │   └── 對話歷程2.xlsx    ← AI 對話紀錄（選填，無則不建立此檔）
+│   ├── 2-作品題目/
+│   │   └── ...
+│   └── ...
+└── 評分表單.xlsx
 ```
 
-> `key` 為英文識別碼（不重複即可），`weight` 總和需為 1.0。
+> **資料夾命名規則**：`{組別編號}-{作品題目}/`  
+> **檔案命名規則**：固定使用 `作品`、`報名表`、`對話歷程1`、`對話歷程2` 作為檔名主體，副檔名依實際格式填寫。
 
-#### 4-2：作品資料（`WORKS` 陣列）
+---
+
+### 差異二：WORKS 陣列（新增 `school`、`grade` 欄位及 4 個檔案欄位）
+
+高中組 WORKS 只需 `pdfFile` 和 `videoUrl`；  
+國小組改為 4 個獨立檔案欄位，移除 `videoUrl`：
 
 ```javascript
+const FILE_BASE = '國小/';   // 取代高中組的 PDF_BASE
+
 const WORKS = [
   {
     id: 1,
     title: '作品題目',
-    videoUrl: 'https://youtu.be/XXXXXXXXXXX',      // YouTube 連結
-    docUrl: 'https://docs.google.com/...',          // 說明書連結（備用開啟）
-    pdfFile: '1-作品題目.pdf',                      // PDF 檔名（需與實際檔案完全一致）
-    initial: {                                       // 各項初審分數（從 xlsx 讀取）
+    school: '○○國小',          // ← 新增：學校名稱
+    grade: '五年級',            // ← 新增：年級
+    // 4 個檔案欄位（副檔名依實際格式填寫）
+    workFile:    '作品.pdf',         // 作品（PDF/JPG/PNG 等）
+    entryFile:   '報名表.docx',      // 報名表（PDF/DOCX）
+    dialogFile1: '對話歷程1.xlsx',   // AI 對話歷程1（XLSX，必填）
+    dialogFile2: '對話歷程2.xlsx',   // AI 對話歷程2（XLSX，null 表示無）
+    initial: {                        // 初審分數（key 需與 CRITERIA 對應）
       item1: 18,
-      item2: 19,
-      item3: 17,
+      item2: 17,
+      item3: 19,
       item4: 18,
-      item5: 19
+      item5: 18
     }
   },
-  // ... 其餘作品
+  // ...
 ];
 ```
 
-**注意事項**：
-- `pdfFile` 中的特殊字元（冒號 `：`、驚嘆號 `!` 等）需與實際檔名一致
-- 非 YouTube 影片連結會自動顯示「外部開啟」按鈕
-- `initial` 的 key 需與 `CRITERIA` 的 `key` 完全對應
+> 若某作品沒有第二份對話歷程，將 `dialogFile2` 設為 `null`，平台會顯示灰色佔位欄位。
 
-#### 4-3：PDF 路徑（`PDF_BASE`）
+---
+
+### 差異三：左側作品列表（新增學校與年級顯示）
+
+在 `renderWorkList()` 函式中，每筆作品卡片需顯示學校及年級。
+
+**CSS 新增（加在既有 `.work-item .title` 之後）**：
+
+```css
+.work-item .meta {
+  font-size: 0.70rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
+```
+
+**`renderWorkList()` 中的卡片 HTML 模板**：
 
 ```javascript
-const PDF_BASE = '高中/PDF/';   // 改為新組別的資料夾路徑
+return `<div class="work-item${active}" onclick="selectWork(${w.id})">
+  <div class="num">#${w.id}</div>
+  <div class="title">${w.title}</div>
+  <div class="meta">${w.school} · ${w.grade}</div>
+  <div class="score-badge${done?' done':''}">複審: ${total ?? '—'} / 初審: ${calcInitial(w)}</div>
+</div>`;
 ```
-
-#### 4-4：頁面標題（可選）
-
-```html
-<title>AI識詐行動 — 高中組複審評分平台</title>
-```
-
-```html
-<h1>AI識詐行動 高中組複審評分平台</h1>
-```
-
-### Step 5：設定 GitHub Pages
-
-1. 複製 `.github/workflows/pages.yml` 到新 repo（內容不需修改）
-2. Push 所有檔案到 `main` 分支
-3. 前往 GitHub repo → **Settings → Pages → Source → GitHub Actions** → 儲存
-4. 等待 CI 完成，網站即上線於 `https://{username}.github.io/{repo-name}/`
 
 ---
 
-## 快速填分分數設定
+### 差異四：中間 Viewer（4 個 Tab 取代原本 2 個）
 
-目前預設快速填分按鈕為 `14、16、18、20`。如需修改：
+中間面板從 2 個 Tab（作品說明書 / 影片）改為 4 個 Tab：
+
+| 位置 | Tab 名稱 | 格式 | 備註 |
+|------|---------|------|------|
+| 1 | 📄 作品 | PDF / JPG / PNG 等 | PDF.js 或 `<img>` |
+| 2 | 📋 報名表 | PDF / DOCX | PDF.js 或外部開啟 |
+| 3 | 📊 對話歷程1 | XLSX | SheetJS 渲染為 HTML 表格 |
+| 4 | 📊 對話歷程2 | XLSX | 無檔案時顯示灰色佔位 |
+
+#### HTML 結構
+
+```html
+<div class="viewer-tabs">
+  <button class="tab-btn active"   onclick="switchTab('work')"    id="tab-work">📄 作品</button>
+  <button class="tab-btn"          onclick="switchTab('entry')"   id="tab-entry">📋 報名表</button>
+  <button class="tab-btn"          onclick="switchTab('dialog1')" id="tab-dialog1">📊 對話歷程1</button>
+  <button class="tab-btn disabled" onclick="switchTab('dialog2')" id="tab-dialog2">📊 對話歷程2</button>
+</div>
+
+<div class="viewer-content">
+  <div class="tab-pane active" id="work-pane">
+    <div id="pdf-controls"><!-- 翻頁控制，圖片時隱藏 --></div>
+    <div id="work-container"></div>
+  </div>
+  <div class="tab-pane" id="entry-pane">
+    <div id="entry-container"></div>
+  </div>
+  <div class="tab-pane" id="dialog1-pane">
+    <div id="dialog1-container" style="width:100%;height:100%;overflow:auto"></div>
+  </div>
+  <div class="tab-pane" id="dialog2-pane">
+    <div id="dialog2-container" style="width:100%;height:100%;overflow:auto"></div>
+  </div>
+</div>
+```
+
+#### CSS 新增
+
+```css
+/* Tab 停用（第四個無檔案時） */
+.tab-btn.disabled {
+  color: var(--border);
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.tab-btn.disabled:hover { border-bottom-color: transparent; }
+
+/* 灰色佔位區 */
+.no-file-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--muted);
+  gap: 10px;
+  font-size: 0.9rem;
+}
+.no-file-placeholder .icon { font-size: 2.5rem; opacity: 0.25; }
+
+/* Excel 表格樣式 */
+.xlsx-table { border-collapse: collapse; font-size: 0.78rem; min-width: 100%; }
+.xlsx-table th, .xlsx-table td { border: 1px solid var(--border); padding: 4px 8px; white-space: nowrap; }
+.xlsx-table tr:nth-child(even) { background: var(--score-bg); }
+```
+
+---
+
+### 差異五：CDN 引入（需新增 SheetJS）
+
+在 `<head>` 或 `<body>` 末尾的 PDF.js CDN 之後加入：
+
+```html
+<!-- PDF.js（高中組已有） -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<!-- SheetJS（國小組新增，用於 Excel 渲染） -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+```
+
+---
+
+### 差異六：Tab 切換與各 Tab 呈現邏輯
+
+#### 輔助函式
 
 ```javascript
-const QUICK_SCORES = [14, 16, 18, 20];   // 可改為任意分數組合
+const FILE_BASE = '國小/';
+const TAB_IDS = ['work', 'entry', 'dialog1', 'dialog2'];
+
+function getFilePath(w, field) {
+  if (!w[field]) return null;
+  return `${FILE_BASE}${w.id}-${w.title}/${w[field]}`;
+}
+
+function getExt(filename) {
+  return filename ? filename.split('.').pop().toLowerCase() : '';
+}
+
+function extOpenBtn(url, label) {
+  return `<div class="ext-btn-wrap">
+    <p style="color:var(--muted);font-size:0.85rem">此格式無法直接預覽</p>
+    <a class="ext-link-btn" href="${url}" target="_blank">⬇ 開啟 / 下載 ${label}</a>
+  </div>`;
+}
+```
+
+#### `switchTab()` 函式
+
+```javascript
+function switchTab(tab) {
+  // 若 dialog2 停用則阻擋切換
+  if (tab === 'dialog2' && !currentWork?.dialogFile2) return;
+
+  activeTab = tab;
+  TAB_IDS.forEach(id => {
+    document.getElementById('tab-' + id)?.classList.toggle('active', id === tab);
+    document.getElementById(id + '-pane')?.classList.toggle('active', id === tab);
+  });
+  renderActiveTab();
+}
+
+function renderActiveTab() {
+  if (!currentWork) return;
+  switch (activeTab) {
+    case 'work':    renderWorkFile();  break;
+    case 'entry':   renderEntryFile(); break;
+    case 'dialog1': renderExcel(1);    break;
+    case 'dialog2': renderExcel(2);    break;
+  }
+}
+```
+
+#### Tab 1 — 作品（PDF 或圖片）
+
+```javascript
+async function renderWorkFile() {
+  const w = currentWork;
+  const path = getFilePath(w, 'workFile');
+  const ext = getExt(w.workFile);
+  const container = document.getElementById('work-container');
+  const controls = document.getElementById('pdf-controls');
+
+  if (['jpg','jpeg','png','gif','webp'].includes(ext)) {
+    controls.style.display = 'none';
+    container.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;padding:12px">
+      <img src="${path}" style="max-width:100%;max-height:100%;object-fit:contain">
+    </div>`;
+  } else if (ext === 'pdf') {
+    controls.style.display = 'flex';
+    await loadPdf(path, 'work-container');  // 複用高中組 PDF 邏輯
+  } else {
+    controls.style.display = 'none';
+    container.innerHTML = extOpenBtn(path, '作品');
+  }
+}
+```
+
+> `loadPdf(url, containerId)` 需從高中組的 `loadPdf()` 重構為接受參數的版本，  
+> 原本寫死 `'pdf-container'` 改為傳入 `containerId`。
+
+#### Tab 2 — 報名表（PDF 或 Word）
+
+```javascript
+async function renderEntryFile() {
+  const w = currentWork;
+  const path = getFilePath(w, 'entryFile');
+  const ext = getExt(w.entryFile);
+  const container = document.getElementById('entry-container');
+
+  if (ext === 'pdf') {
+    await loadPdf(path, 'entry-container');
+  } else {
+    // .docx / .doc → 外部開啟按鈕
+    container.innerHTML = extOpenBtn(path, '報名表');
+  }
+}
+```
+
+#### Tab 3 & 4 — 對話歷程（Excel）
+
+```javascript
+async function renderExcel(num) {
+  const field = `dialogFile${num}`;
+  const containerId = `dialog${num}-container`;
+  const container = document.getElementById(containerId);
+  const w = currentWork;
+
+  if (!w[field]) {
+    container.innerHTML = `<div class="no-file-placeholder">
+      <div class="icon">📊</div>
+      <div>無第 ${num} 份對話歷程</div>
+    </div>`;
+    return;
+  }
+
+  const path = getFilePath(w, field);
+  container.innerHTML = '<p style="color:var(--muted);padding:20px">載入中…</p>';
+
+  try {
+    const resp = await fetch(path);
+    const buf  = await resp.arrayBuffer();
+    const wb   = XLSX.read(buf, { type: 'array' });
+    const ws   = wb.Sheets[wb.SheetNames[0]];
+
+    // 轉為 2D array 後手動建立 HTML，套用自訂樣式
+    const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
+    const rows = data.map((row, i) => {
+      const tag = i === 0 ? 'th' : 'td';
+      const cells = row.map(cell => `<${tag}>${cell ?? ''}</${tag}>`).join('');
+      return `<tr>${cells}</tr>`;
+    }).join('');
+
+    container.innerHTML = `<div style="padding:10px;overflow:auto;width:100%;height:100%">
+      <table class="xlsx-table">${rows}</table>
+    </div>`;
+  } catch(e) {
+    container.innerHTML = extOpenBtn(path, `對話歷程${num}`);
+  }
+}
 ```
 
 ---
 
-## AI 評分功能
+### 差異七：選擇作品時同步更新 Tab4 狀態
 
-平台支援使用 Claude API 進行 AI 輔助評分：
-- 評審在右側面板點擊「🤖 AI」按鈕
-- 輸入自備的 Claude API Key（`sk-ant-...`）
-- AI 會根據評分標準和初審分數給出建議分數與評語
-- API Key 儲存於 localStorage，下次無需重新輸入
-- 使用模型：`claude-haiku-4-5-20251001`（速度快、成本低）
+```javascript
+function selectWork(id) {
+  currentWork = WORKS.find(w => w.id === id);
+  renderWorkList();
+  renderScoring();
 
----
+  // 更新 Tab4 停用/啟用狀態
+  const tab4 = document.getElementById('tab-dialog2');
+  if (tab4) {
+    const has = !!currentWork.dialogFile2;
+    tab4.classList.toggle('disabled', !has);
+    tab4.title = has ? '' : '此作品無第二份對話歷程';
+    // 若目前停在 Tab4 但新作品無檔案，切回 Tab1
+    if (activeTab === 'dialog2' && !has) switchTab('work');
+  }
 
-## CSV 輸出格式
-
-點擊「⬇ 輸出 CSV」後，下載檔案包含以下欄位：
-
-| 組別 | 題目 | 項目1 | 項目2 | 項目3 | 項目4 | 項目5 | 複審總分 | 初審總分 | 評語 | 評審姓名 |
-|------|------|-------|-------|-------|-------|-------|---------|---------|------|---------|
-
-- 含 UTF-8 BOM，Excel 開啟中文不亂碼
-- 檔名格式：`複審評分_{評審姓名}_{日期}.csv`
-
----
-
-## 資料儲存說明
-
-- 所有評分儲存於瀏覽器 **localStorage**，清除瀏覽器資料會遺失
-- 建議評分完成後立即輸出 CSV 備份
-- 不同瀏覽器/裝置的評分資料不會同步
+  // 預設切回 Tab1（作品）
+  if (activeTab !== 'dialog2') switchTab(activeTab);
+  else renderActiveTab();
+}
+```
 
 ---
 
-## 常見問題
+### 差異八：CSV 輸出（新增學校、年級欄位）
 
-**Q：PDF 無法顯示？**  
-A：平台使用 PDF.js 渲染，需要網路載入 CDN。確認 PDF 檔案已正確放入 `高中/PDF/` 並 commit 到 repo。
+```javascript
+function exportCSV() {
+  const reviewer = localStorage.getItem('reviewer_name') || '未設定';
+  const date = new Date().toISOString().slice(0, 10);
 
-**Q：影片無法播放？**  
-A：YouTube 連結會直接嵌入；其他平台（SharePoint、Drive）會顯示「外部開啟」按鈕。建議請參賽者上傳至 YouTube。
+  const header = ['組別', '學校', '年級', '題目',
+                  ...CRITERIA.map(c => c.name),
+                  '複審總分', '初審總分', '評語', '評審姓名'];
+  const rows = [header];
+  const s = loadStorage();
 
-**Q：GitHub Pages CI 失敗？**  
-A：需先在 repo Settings → Pages 手動選擇 GitHub Actions 作為 Source，才能啟用自動部署。
+  WORKS.forEach(w => {
+    const d = s[w.id] || {};
+    const scores = CRITERIA.map(c => d[c.key] != null ? d[c.key] : '');
+    const total  = calcTotal(w, d);
+    rows.push([w.id, w.school, w.grade, w.title,
+               ...scores, total ?? '', calcInitial(w), d.comment || '', reviewer]);
+  });
 
-**Q：想新增評審姓名？**  
-A：點擊右上角「👤 評審姓名」按鈕設定，會顯示於 CSV 輸出。
+  const csv  = '﻿' + rows.map(r =>
+    r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
+  ).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = `複審評分_${reviewer}_${date}.csv`;
+  a.click();
+}
+```
+
+---
+
+### 差異九：其他需修改的設定值
+
+```javascript
+// localStorage key（避免與高中組衝突）
+const STORAGE_KEY = 'aieval_es_scores';
+
+// 頁面標題
+// <title>AI識詐行動 — 國小組複審評分平台</title>
+// <h1>🛡 AI識詐行動 — 國小組複審評分平台</h1>
+
+// 作品列表數量顯示
+// <span>作品列表 (XX件)</span>
+
+// loadPdf() 需重構為接受 containerId 參數：
+async function loadPdf(url, containerId) {
+  const container = document.getElementById(containerId);
+  document.getElementById('pdf-page-info').textContent = '載入中…';
+  container.innerHTML = '<p style="color:var(--muted);margin-top:40px">載入 PDF 中…</p>';
+  try {
+    pdfDoc = await pdfjsLib.getDocument(url).promise;
+    pdfPage = 1;
+    await renderPdfPage(containerId);
+  } catch (e) {
+    container.innerHTML = `<div style="color:#f87171;padding:20px;text-align:center">
+      PDF 載入失敗：${e.message}</div>`;
+  }
+}
+
+async function renderPdfPage(containerId) {
+  if (!pdfDoc) return;
+  if (pdfRenderTask) pdfRenderTask.cancel();
+  const page = await pdfDoc.getPage(pdfPage);
+  const vp   = page.getViewport({ scale: pdfScale });
+  const canvas = document.createElement('canvas');
+  canvas.width = vp.width; canvas.height = vp.height;
+  const container = document.getElementById(containerId || 'work-container');
+  container.innerHTML = '';
+  container.appendChild(canvas);
+  pdfRenderTask = page.render({ canvasContext: canvas.getContext('2d'), viewport: vp });
+  await pdfRenderTask.promise;
+  document.getElementById('pdf-page-info').textContent = `${pdfPage} / ${pdfDoc.numPages}`;
+}
+```
+
+---
+
+## 從 xlsx 抽取國小組資料
+
+國小組 xlsx 欄位需確認實際位置，典型欄位如下（請依實際表單調整）：
+
+| 欄 | 內容 |
+|----|------|
+| A | 組別編號 |
+| B | 作品題目 |
+| C | 學校名稱（新增） |
+| D | 年級（新增） |
+| E～I | 評分項目1～5 初審分數 |
+| J | 作品說明書備用連結（可略） |
+
+Python 抽取腳本範例：
+
+```python
+import openpyxl
+
+wb = openpyxl.load_workbook('國小組評分表單.xlsx')
+ws = wb['國小組']
+
+for row in ws.iter_rows(min_row=6, max_row=200, max_col=12, values_only=True):
+    if not row[0]:
+        break
+    print({
+        'id':     row[0],
+        'title':  row[1],
+        'school': row[2],
+        'grade':  row[3],
+        'item1':  row[4],
+        'item2':  row[5],
+        'item3':  row[6],
+        'item4':  row[7],
+        'item5':  row[8],
+    })
+```
 
 ---
 
 ## 技術依賴
 
-| 套件 | 版本 | 用途 |
-|------|------|------|
-| PDF.js | 3.11.174 | PDF 渲染（CDN） |
-| Claude API | claude-haiku-4-5-20251001 | AI 評分（選用） |
+| 套件 | 版本 | 用途 | 組別 |
+|------|------|------|------|
+| PDF.js | 3.11.174 | PDF 渲染 | 高中組 & 國小組 |
+| SheetJS (xlsx) | 0.18.5 | Excel 試算表渲染 | 國小組新增 |
+| Claude API | claude-haiku-4-5-20251001 | AI 評分（選用） | 兩組共用 |
 
 無其他框架依賴，純 HTML/CSS/JS。
+
+---
+
+## 快速填分設定
+
+```javascript
+const QUICK_SCORES = [14, 16, 18, 20];   // 可依組別需求修改
+```
+
+---
+
+## 常見問題
+
+**Q：Excel 無法顯示？**  
+A：SheetJS fetch 需要 HTTPS 環境，本機直接開啟 `file://` 會遇到 CORS 限制。請 deploy 到 GitHub Pages 後測試。
+
+**Q：Word 報名表無法預覽？**  
+A：`.docx` 格式目前以「外部開啟 / 下載」按鈕處理。若需要直接預覽，可引入 `mammoth.js` 將 docx 轉為 HTML，但需額外實作。
+
+**Q：第四個 Tab 仍可點擊？**  
+A：確認 `selectWork()` 中有呼叫 `tab4.classList.toggle('disabled', !has)`，並在 `switchTab()` 開頭加入判斷：
+```javascript
+if (tab === 'dialog2' && !currentWork?.dialogFile2) return;
+```
+
+**Q：CSV 中學校/年級是空的？**  
+A：確認 WORKS 陣列每筆都有 `school` 和 `grade` 欄位，且 `exportCSV()` 的 header 及 row 都已加入這兩欄。
+
+**Q：兩組評分資料互相干擾？**  
+A：確認國小組 `STORAGE_KEY = 'aieval_es_scores'`（高中組為 `aieval_hs_scores'`），兩者使用不同 key 存在 localStorage 中。
+
+**Q：圖片作品顯示變形？**  
+A：圖片使用 `object-fit: contain` 等比縮放，若仍有問題確認容器高度設定正確（`height: 100%` 需要父層也有明確高度）。
