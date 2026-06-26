@@ -244,14 +244,34 @@ return `<div class="work-item${active}" onclick="selectWork(${w.id})">
   <div class="tab-pane" id="entry-pane">
     <div id="entry-container"></div>
   </div>
+  <!-- Tab 3: 對話歷程1（Excel + 儲存格預覽列） -->
   <div class="tab-pane" id="dialog1-pane">
-    <div id="dialog1-container" style="width:100%;height:100%;overflow:auto"></div>
+    <div id="dialog1-container" style="flex:1;overflow:auto;width:100%"></div>
+    <div class="cell-preview-bar" id="dialog1-preview">
+      <span class="cell-preview-label">儲存格內容檢視</span>
+      <span class="cell-preview-addr" id="dialog1-preview-addr">—</span>
+      <span class="cell-preview-content" id="dialog1-preview-content">點擊儲存格以檢視完整內容</span>
+    </div>
   </div>
+
+  <!-- Tab 4: 對話歷程2（Excel + 儲存格預覽列，或灰色佔位） -->
   <div class="tab-pane" id="dialog2-pane">
-    <div id="dialog2-container" style="width:100%;height:100%;overflow:auto"></div>
+    <div id="dialog2-container" style="flex:1;overflow:auto;width:100%"></div>
+    <div class="cell-preview-bar" id="dialog2-preview">
+      <span class="cell-preview-label">儲存格內容檢視</span>
+      <span class="cell-preview-addr" id="dialog2-preview-addr">—</span>
+      <span class="cell-preview-content" id="dialog2-preview-content">點擊儲存格以檢視完整內容</span>
+    </div>
   </div>
 </div>
 ```
+
+> **注意**：`dialog1-pane` 和 `dialog2-pane` 的 `.tab-pane.active` 需改為 `flex-direction: column`，  
+> 才能讓表格區與預覽列上下排列：
+>
+> ```css
+> #dialog1-pane.active, #dialog2-pane.active { flex-direction: column; }
+> ```
 
 #### CSS 新增
 
@@ -279,8 +299,47 @@ return `<div class="work-item${active}" onclick="selectWork(${w.id})">
 
 /* Excel 表格樣式 */
 .xlsx-table { border-collapse: collapse; font-size: 0.78rem; min-width: 100%; }
-.xlsx-table th, .xlsx-table td { border: 1px solid var(--border); padding: 4px 8px; white-space: nowrap; }
-.xlsx-table tr:nth-child(even) { background: var(--score-bg); }
+.xlsx-table th, .xlsx-table td { border: 1px solid var(--border); padding: 4px 8px; white-space: nowrap; cursor: pointer; }
+.xlsx-table td:hover { background: var(--hover); }
+.xlsx-table td.selected { background: #1e2a50; outline: 2px solid var(--accent); outline-offset: -1px; }
+.xlsx-table tr:nth-child(even) td { background: var(--score-bg); }
+.xlsx-table tr:nth-child(even) td:hover { background: var(--hover); }
+.xlsx-table tr:nth-child(even) td.selected { background: #1e2a50; }
+
+/* 儲存格內容預覽列 */
+.cell-preview-bar {
+  flex-shrink: 0;
+  background: #12142a;
+  border-top: 1px solid var(--border);
+  padding: 6px 10px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.78rem;
+  min-height: 38px;
+  max-height: 100px;
+}
+.cell-preview-label {
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+  padding-top: 2px;
+  font-size: 0.72rem;
+}
+.cell-preview-addr {
+  color: var(--muted);
+  white-space: nowrap;
+  padding-top: 2px;
+  min-width: 50px;
+}
+.cell-preview-content {
+  color: var(--text);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-y: auto;
+  flex: 1;
+}
 ```
 
 ---
@@ -395,22 +454,43 @@ async function renderEntryFile() {
 }
 ```
 
-#### Tab 3 & 4 — 對話歷程（Excel）
+#### Tab 3 & 4 — 對話歷程（Excel，含儲存格內容預覽）
 
 ```javascript
+// 欄號轉 Excel 字母欄標（0→A, 1→B, 25→Z, 26→AA…）
+function colLabel(n) {
+  let s = '';
+  for (n++; n > 0; n = Math.floor((n - 1) / 26))
+    s = String.fromCharCode(((n - 1) % 26) + 65) + s;
+  return s;
+}
+
 async function renderExcel(num) {
   const field = `dialogFile${num}`;
   const containerId = `dialog${num}-container`;
+  const previewAddr    = document.getElementById(`dialog${num}-preview-addr`);
+  const previewContent = document.getElementById(`dialog${num}-preview-content`);
   const container = document.getElementById(containerId);
   const w = currentWork;
+
+  // 清空預覽列
+  if (previewAddr)    previewAddr.textContent    = '—';
+  if (previewContent) previewContent.textContent = '點擊儲存格以檢視完整內容';
 
   if (!w[field]) {
     container.innerHTML = `<div class="no-file-placeholder">
       <div class="icon">📊</div>
       <div>無第 ${num} 份對話歷程</div>
     </div>`;
+    // 無檔案時隱藏預覽列
+    const bar = document.getElementById(`dialog${num}-preview`);
+    if (bar) bar.style.display = 'none';
     return;
   }
+
+  // 有檔案時確保預覽列可見
+  const bar = document.getElementById(`dialog${num}-preview`);
+  if (bar) bar.style.display = 'flex';
 
   const path = getFilePath(w, field);
   container.innerHTML = '<p style="color:var(--muted);padding:20px">載入中…</p>';
@@ -421,17 +501,41 @@ async function renderExcel(num) {
     const wb   = XLSX.read(buf, { type: 'array' });
     const ws   = wb.Sheets[wb.SheetNames[0]];
 
-    // 轉為 2D array 後手動建立 HTML，套用自訂樣式
-    const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
-    const rows = data.map((row, i) => {
-      const tag = i === 0 ? 'th' : 'td';
-      const cells = row.map(cell => `<${tag}>${cell ?? ''}</${tag}>`).join('');
+    // 保留完整原始值（不截斷）以供預覽列顯示
+    const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+    const rows = data.map((row, ri) => {
+      const isHeader = ri === 0;
+      const cells = row.map((cell, ci) => {
+        const tag  = isHeader ? 'th' : 'td';
+        const addr = `${colLabel(ci)}${ri + 1}`;        // 例如 A1、E4
+        const disp = String(cell ?? '');
+        // 顯示用截斷（避免欄位過寬），完整值存於 data-full
+        const short = disp.length > 60 ? disp.slice(0, 60) + '…' : disp;
+        return `<${tag} data-addr="${addr}" data-full="${disp.replace(/"/g,'&quot;')}">${short}</${tag}>`;
+      }).join('');
       return `<tr>${cells}</tr>`;
     }).join('');
 
     container.innerHTML = `<div style="padding:10px;overflow:auto;width:100%;height:100%">
-      <table class="xlsx-table">${rows}</table>
+      <table class="xlsx-table" id="xlsx-table-${num}">${rows}</table>
     </div>`;
+
+    // 點擊儲存格 → 更新預覽列
+    document.getElementById(`xlsx-table-${num}`).addEventListener('click', e => {
+      const cell = e.target.closest('td, th');
+      if (!cell) return;
+
+      // 清除上一個選取樣式
+      document.querySelectorAll(`#xlsx-table-${num} .selected`).forEach(el => el.classList.remove('selected'));
+      cell.classList.add('selected');
+
+      const addr = cell.dataset.addr || '';
+      const full = cell.dataset.full ?? cell.textContent;
+      if (previewAddr)    previewAddr.textContent    = addr;
+      if (previewContent) previewContent.textContent = full || '（空白）';
+    });
+
   } catch(e) {
     container.innerHTML = extOpenBtn(path, `對話歷程${num}`);
   }
@@ -627,3 +731,12 @@ A：確認國小組 `STORAGE_KEY = 'aieval_es_scores'`（高中組為 `aieval_hs
 
 **Q：圖片作品顯示變形？**  
 A：圖片使用 `object-fit: contain` 等比縮放，若仍有問題確認容器高度設定正確（`height: 100%` 需要父層也有明確高度）。
+
+**Q：點擊儲存格後預覽列沒有更新？**  
+A：確認 `renderExcel()` 內有正確設定 `data-addr` 與 `data-full` 屬性，並且 `addEventListener` 掛在 `#xlsx-table-${num}` 上（而非 container）。若 container 被 innerHTML 整個替換，需重新綁定事件。
+
+**Q：儲存格內容顯示被截斷？**  
+A：表格顯示欄位限制 60 字元（避免欄寬過大），完整內容儲存於 `data-full` 屬性並在下方預覽列完整顯示，不會遺失任何文字。
+
+**Q：預覽列在無第二份對話歷程時仍顯示？**  
+A：確認 `renderExcel()` 中 `!w[field]` 的分支有執行 `bar.style.display = 'none'`；有檔案時則設為 `'flex'`。
