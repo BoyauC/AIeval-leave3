@@ -348,11 +348,23 @@ function renderScoring() {
   const initTotal = calcInitial(w);
   const revTotal = calcTotal(w, d);
 
-  let html = `<div class="initial-row">初審分數：`;
+  let html = `<div class="initial-row">
+    <div style="width:100%;font-size:0.75rem;color:var(--muted);margin-bottom:4px">初審分數</div>`;
   CRITERIA.forEach(c => {
-    html += `<span title="${c.name}">${c.name.slice(0,2)}:${w.initial[c.key]}</span> `;
+    html += `<span title="${c.name}" style="display:inline-flex;align-items:center;gap:3px">
+      <span style="color:var(--muted)">${c.name.slice(0,2)}</span>
+      <span>${w.initial[c.key]}</span>
+    </span> `;
   });
-  html += `<strong>合計 ${initTotal}</strong></div>`;
+  html += `<span style="margin-left:auto;font-weight:700;color:var(--accent2)">合計 ${initTotal}</span>
+  </div>`;
+
+  html += `<div style="margin-bottom:14px">
+    <div style="font-size:0.75rem;color:var(--muted);margin-bottom:6px;font-weight:600;letter-spacing:.5px">快速一鍵填分（全項目）</div>
+    <div class="quick-btns">
+      ${QUICK_SCORES.map(s => `<button class="quick-btn" onclick="applyAll(${s})">${s} 分</button>`).join('')}
+    </div>
+  </div>`;
 
   CRITERIA.forEach(c => {
     const val = d[c.key] != null ? d[c.key] : '';
@@ -401,6 +413,13 @@ function onScoreInput(key, val) {
   updateTotalDisplay();
   renderWorkList();
   highlightQuick(key, n);
+}
+
+function applyAll(val) {
+  if (!currentWork) return;
+  CRITERIA.forEach(c => setWorkData(currentWork.id, { [c.key]: val }));
+  renderScoring();
+  renderWorkList();
 }
 
 function quickScore(key, val) {
